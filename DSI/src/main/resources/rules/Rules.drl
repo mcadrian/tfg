@@ -1,0 +1,251 @@
+package model
+ 
+rule "QRS Complex"
+	when 
+		q : Wave( type == Type.Q ) && r : Wave( type == Type.R ) && s : Wave( type == Type.S ) && d: Duration ( type == DurationType.QRSCOMPLEX)
+		eval (r.getStart() >= q.getEnd())
+		eval (s.getStart() >= r.getEnd())
+		eval (q.getCycle() == r.getCycle())
+		eval (r.getCycle() == s.getCycle())
+		$rulesTracking : RulesTracking()
+	then
+		insert(new QRSComplex(q.getStart(), s.getEnd(), q.getCycle()));
+		d.setDuration(d.getDuration() + (s.getEnd() - q.getStart()));
+	    $rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+
+rule "PR Interval"
+	when 
+		p : Wave( type == Type.P ) && qrs : QRSComplex() && d: Duration ( type == DurationType.PRINTERVAL)
+		eval (qrs.getStart() >= p.getStart())
+		eval (p.getCycle() == qrs.getCycle())
+		$rulesTracking : RulesTracking()
+	then
+		insert(new Interval(IntervalType.PR, p.getStart(), qrs.getStart(), qrs.getCycle()));
+		d.setDuration(d.getDuration() + (qrs.getStart() - p.getStart()));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+
+rule "PR Segment"
+	when 
+		p : Wave( type == Type.P ) && qrs : QRSComplex() && d: Duration ( type == DurationType.PRSEGMENT)
+		eval (qrs.getStart() >= p.getEnd())
+		eval (p.getCycle() == qrs.getCycle())
+		$rulesTracking : RulesTracking()
+	then
+		insert(new Segment(SegmentType.PR, p.getEnd(), qrs.getStart(), qrs.getCycle()));
+		d.setDuration(d.getDuration() + (qrs.getStart() - p.getEnd()));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+
+rule "RR Interval"
+	when 
+		r1 : Wave( type == Type.R ) && r2 :  Wave( type == Type.R ) && d: Duration ( type == DurationType.RRINTERVAL)
+		eval (r1.getStart() < r2.getStart())
+		eval ((r2.getCycle()-r1.getCycle()) == 1)
+		$rulesTracking : RulesTracking()
+	then
+		insert(new Interval(IntervalType.RR, r1.getStart(), r2.getStart(), r2.getCycle()));
+		d.setDuration(d.getDuration() + (r2.getStart() - r1.getStart()));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+
+rule "ST Interval"
+	when 
+		j : JPoint() && t :  Wave( type == Type.T ) && d: Duration ( type == DurationType.STINTERVAL)
+		eval (t.getEnd() >= j.getPosition())
+		eval (t.getCycle()==j.getCycle())
+		$rulesTracking : RulesTracking()
+	then
+		insert(new Interval(IntervalType.ST, j.getPosition(), t.getEnd(), j.getCycle()));
+		d.setDuration(d.getDuration() + (t.getEnd() - j.getPosition()));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+
+rule "ST Segment"
+	when 
+		qrs : QRSComplex() && t :  Wave( type == Type.T ) && d: Duration ( type == DurationType.STSEGMENT)
+		eval (t.getStart() >= qrs.getEnd())
+		eval (t.getCycle()==qrs.getCycle())
+		$rulesTracking : RulesTracking()
+	then
+		insert(new Segment(SegmentType.ST, qrs.getEnd(), t.getStart(), t.getCycle()));
+		d.setDuration(d.getDuration() + (t.getStart() - qrs.getEnd()));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+
+rule "QT Interval"
+	when 
+		qrs : QRSComplex() && t :  Wave( type == Type.T ) && d: Duration ( type == DurationType.QTINTERVAL)
+		eval (t.getEnd() >= qrs.getStart())
+		eval (t.getCycle()==qrs.getCycle())
+		$rulesTracking : RulesTracking()
+	then
+		insert(new Interval(IntervalType.QT, qrs.getStart(), t.getEnd(), qrs.getCycle()));
+		d.setDuration(d.getDuration() + (t.getEnd() - qrs.getStart()));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+
+rule "J Point"
+	when 
+		qrs : QRSComplex()
+		$rulesTracking : RulesTracking()
+	then
+		insert(new JPoint(qrs.getEnd(), qrs.getCycle()));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+
+
+/////////////////// Abnormal Patterns Rules //////////////////////
+
+rule "Hypocalcemia"
+	when 
+		qt : Interval (type == IntervalType.QT)
+		eval ((qt.getEnd()-qt.getStart()) > 440)
+		$rulesTracking : RulesTracking()
+	then
+		System.out.println("Hypocalcemia detected in cycle " + qt.getCycle());
+		insert(new AbnormalPattern("Hypocalcemia", "prolonged QT interval", qt.getEnd()-qt.getStart(), qt.getCycle()));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+
+rule "Hypokalemia R1"
+	when 
+		t : Wave (type == Type.T)
+		eval (t.getPeak() < 0.1)
+		$rulesTracking : RulesTracking()
+	then
+		System.out.println("Hypokalemia R1 detected in cycle " + t.getCycle());
+		insert(new AbnormalPattern("Hypokalemia", "flattened or inverted T wave", t.getPeak(), t.getCycle()));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+
+rule "Hypokalemia R2"
+	when 
+		u : Wave (type == Type.U)
+		eval (u.getPeak() > 0.1)
+		$rulesTracking : RulesTracking()
+	then
+		System.out.println("Hypokalemia R2 detected in cycle " + u.getCycle());
+		insert(new AbnormalPattern("Hypokalemia", "prominent U wave", u.getPeak(), u.getCycle()));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+
+rule "Hypokalemia R3"
+	when 
+		pr : Interval (type == IntervalType.PR)
+		eval ((pr.getEnd()-pr.getStart()) > 200)
+		$rulesTracking : RulesTracking()
+	then
+		System.out.println("Hypokalemia R3 detected in cycle " + pr.getCycle());
+		insert(new AbnormalPattern("Hypokalemia", "wide PR interval", pr.getEnd()-pr.getStart(), pr.getCycle()));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+
+rule "Acute Myocardial Infarction"
+	when 
+		t : Wave (type == Type.T)
+		eval (t.getPeak() > 0.5)
+		$rulesTracking : RulesTracking()
+	then
+		System.out.println("Acute Myocardial Infarction detected in cycle " + t.getCycle());
+		insert(new AbnormalPattern("Acute Myocardial Infarction", "hyperacute T wave", t.getPeak(), t.getCycle()));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+
+rule "Coronary Ischemia R1"
+	when 
+		u : Wave (type == Type.U)
+		eval (u.getPeak() < 0)
+		$rulesTracking : RulesTracking()
+	then
+		System.out.println("Coronary Ischemia R1 detected in cycle " + u.getCycle());
+		insert(new AbnormalPattern("Coronary Ischemia", "inverted U wave", u.getPeak(), u.getCycle()));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+
+rule "Coronary Ischemia R2"
+	when 
+		t : Wave (type == Type.T)
+		eval (t.getPeak() < 0.1)
+		$rulesTracking : RulesTracking()
+	then
+		System.out.println("Coronary Ischemia R2 detected in cycle " + t.getCycle());
+		insert(new AbnormalPattern("Coronary Ischemia", "flattened or inverted T wave", t.getPeak(), t.getCycle()));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+
+/*
+rule "Bradicardia Sinus"
+//rete.eval("(defrule bradicardiaSinusR1 (heartRate (bpm ?bpm)) (test (< ?bpm 60.0)) (test (> ?bpm 0.0)) => (assert (abnormalPattern (name \"Bradicardia Sinus\") (symptom \"synus rhythm of less than 60/min\") (extraInfo ?bpm) (cycle 0)) ))");
+	when 
+		t : Wave (type == Type.T)
+		eval (t.getPeak() < 0.1)
+		$rulesTracking : RulesTracking()
+	then
+		System.out.println("Bradicardia Sinus detected");
+		insert(new AbnormalPattern("Bradicardia Sinus", "synus rhythm of less than 60/min", t.getPeak(), 0));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+*/
+
+/*
+rule "Tachycardia Sinus"
+//rete.eval("(defrule tachycardiaSinusR1 (heartRate (bpm ?bpm))(test (> ?bpm 100))  => (assert (abnormalPattern (name \"Tachycardia Sinus\") (symptom \"synus rhythm of higher than 100/min\") (extraInfo ?bpm) (cycle 0))   ))");
+	when 
+		t : Wave (type == Type.T)
+		eval (t.getPeak() < 0.1)
+		$rulesTracking : RulesTracking()
+	then
+		System.out.println("Tachycardia Sinus detected");
+		insert(new AbnormalPattern("Tachycardia Sinus", "synus rhythm of higher than 100/min", t.getPeak(), 0));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+*/
+
+/*
+rule "Atrial Flutter R1"
+//rete.eval("(defrule atrialFlutterR1 (heartRate (bpm ?bpm)) (test (> ?bpm 200)) => (assert (abnormalPattern (name \"Atrial Flutter\") (symptom \"synus rhythm of higher than 200/min\") (extraInfo ?bpm) (cycle 0)) ))");
+	when 
+		t : Wave (type == Type.T)
+		eval (t.getPeak() < 0.1)
+		$rulesTracking : RulesTracking()
+	then
+		System.out.println("Atrial Flutter R1 detected");
+		insert(new AbnormalPattern("Atrial Flutter", "synus rhythm of higher than 200/min\", t.getPeak(), 0));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+*/
+
+
+rule "Atrial Flutter R2"
+	when 
+		qrs : QRSComplex ()
+		eval ((qrs.getEnd()-qrs.getStart()) > 100)
+		$rulesTracking : RulesTracking()
+	then
+		System.out.println("Atrial Flutter R2 detected in cycle " + qrs.getCycle());
+		insert(new AbnormalPattern("Atrial Flutter", "prolonged QRS Complex", qrs.getEnd()-qrs.getStart(), qrs.getCycle()));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+
+rule "Premature Ventricular Contraction"
+	when 
+		qrs : QRSComplex ()
+		eval ((qrs.getEnd()-qrs.getStart()) < 60)
+		$rulesTracking : RulesTracking()
+	then
+		System.out.println("Premature Ventricular Contraction detected in cycle " + qrs.getCycle());
+		insert(new AbnormalPattern("Premature Ventricular Contraction", "shortened QRS Complex", qrs.getEnd()-qrs.getStart(), qrs.getCycle()));
+		$rulesTracking.track(drools.getRule()); // here you call your tracking method manually, absolute control
+end
+
+// Query para obtener todos los abnormal patterns
+query "getAbnormalPatterns"
+    $result: AbnormalPattern()
+end
+
+// Query para obtener todos los hechos
+//query "getFacts"
+//    $result: AbnormalPattern()
+//end

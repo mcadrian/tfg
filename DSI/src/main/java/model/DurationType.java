@@ -1,0 +1,6 @@
+package model;
+
+public enum DurationType {
+	QRSCOMPLEX, PRINTERVAL, PRSEGMENT, STINTERVAL, STSEGMENT, QTINTERVAL, RRINTERVAL
+
+}
